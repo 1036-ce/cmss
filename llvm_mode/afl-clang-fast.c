@@ -95,7 +95,7 @@ static void find_obj(u8* argv0) {
   }
 
   FATAL("Unable to find 'afl-llvm-rt.o' or 'afl-llvm-pass.so'. Please set AFL_PATH");
- 
+
 }
 
 
@@ -103,7 +103,7 @@ static void find_obj(u8* argv0) {
 
 static void edit_params(u32 argc, char** argv) {
 
-  u8 fortify_set = 0, asan_set = 0, x_set = 0, maybe_linking = 1, bit_mode = 0;
+  u8 fortify_set = 0, asan_set = 0, x_set = 0, bit_mode = 0;
   u8 *name;
 
   cc_params = ck_alloc((argc + 128) * sizeof(u8*));
@@ -128,20 +128,16 @@ static void edit_params(u32 argc, char** argv) {
 
 #ifdef USE_TRACE_PC
   cc_params[cc_par_cnt++] = "-fsanitize-coverage=trace-pc-guard";
+#ifndef __ANDROID__
   cc_params[cc_par_cnt++] = "-mllvm";
   cc_params[cc_par_cnt++] = "-sanitizer-coverage-block-threshold=0";
+#endif
 #else
   cc_params[cc_par_cnt++] = "-Xclang";
-  cc_params[cc_par_cnt++] = "-load";
-  cc_params[cc_par_cnt++] = "-Xclang";
-  cc_params[cc_par_cnt++] = alloc_printf("%s/afl-llvm-pass.so", obj_path);
+  cc_params[cc_par_cnt++] = alloc_printf("-fpass-plugin=%s/afl-llvm-pass.so", obj_path);
 #endif /* ^USE_TRACE_PC */
 
   cc_params[cc_par_cnt++] = "-Qunused-arguments";
-
-  /* Detect stray -v calls from ./configure scripts. */
-
-  if (argc == 1 && !strcmp(argv[1], "-v")) maybe_linking = 0;
 
   while (--argc) {
     u8* cur = *(++argv);
@@ -152,15 +148,10 @@ static void edit_params(u32 argc, char** argv) {
 
     if (!strcmp(cur, "-x")) x_set = 1;
 
-    if (!strcmp(cur, "-c") || !strcmp(cur, "-S") || !strcmp(cur, "-E"))
-      maybe_linking = 0;
-
     if (!strcmp(cur, "-fsanitize=address") ||
         !strcmp(cur, "-fsanitize=memory")) asan_set = 1;
 
     if (strstr(cur, "FORTIFY_SOURCE")) fortify_set = 1;
-
-    if (!strcmp(cur, "-shared")) maybe_linking = 0;
 
     if (!strcmp(cur, "-Wl,-z,defs") ||
         !strcmp(cur, "-Wl,--no-undefined")) continue;
@@ -279,38 +270,36 @@ static void edit_params(u32 argc, char** argv) {
 #endif /* ^__APPLE__ */
     "_I(); } while (0)";
 
-  if (maybe_linking) {
+  if (x_set) {
+    cc_params[cc_par_cnt++] = "-x";
+    cc_params[cc_par_cnt++] = "none";
+  }
 
-    if (x_set) {
-      cc_params[cc_par_cnt++] = "-x";
-      cc_params[cc_par_cnt++] = "none";
-    }
+#ifndef __ANDROID__
+  switch (bit_mode) {
 
-    switch (bit_mode) {
+    case 0:
+      cc_params[cc_par_cnt++] = alloc_printf("%s/afl-llvm-rt.o", obj_path);
+      break;
 
-      case 0:
-        cc_params[cc_par_cnt++] = alloc_printf("%s/afl-llvm-rt.o", obj_path);
-        break;
+    case 32:
+      cc_params[cc_par_cnt++] = alloc_printf("%s/afl-llvm-rt-32.o", obj_path);
 
-      case 32:
-        cc_params[cc_par_cnt++] = alloc_printf("%s/afl-llvm-rt-32.o", obj_path);
+      if (access(cc_params[cc_par_cnt - 1], R_OK))
+        FATAL("-m32 is not supported by your compiler");
 
-        if (access(cc_params[cc_par_cnt - 1], R_OK))
-          FATAL("-m32 is not supported by your compiler");
+      break;
 
-        break;
+    case 64:
+      cc_params[cc_par_cnt++] = alloc_printf("%s/afl-llvm-rt-64.o", obj_path);
 
-      case 64:
-        cc_params[cc_par_cnt++] = alloc_printf("%s/afl-llvm-rt-64.o", obj_path);
+      if (access(cc_params[cc_par_cnt - 1], R_OK))
+        FATAL("-m64 is not supported by your compiler");
 
-        if (access(cc_params[cc_par_cnt - 1], R_OK))
-          FATAL("-m64 is not supported by your compiler");
-
-        break;
-
-    }
+      break;
 
   }
+#endif
 
   cc_params[cc_par_cnt] = NULL;
 
@@ -353,9 +342,17 @@ int main(int argc, char** argv) {
   }
 
 
+#ifndef __ANDROID__
   find_obj(argv[0]);
+#endif
 
   edit_params(argc, argv);
+
+  // add here
+  // printf(cCYA"CC/CXX Args:\n");
+  // for(int i = 0; i < cc_par_cnt; i++) {
+  //   printf("\targ%d: %s \n", i + 1, cc_params[i]);
+  // }
 
   execvp(cc_params[0], (char**)cc_params);
 

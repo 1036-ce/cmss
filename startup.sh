@@ -1,16 +1,21 @@
 #!/bin/bash
 
-AFLNET="$(pwd)"
-WORKDIR="$(dirname "$(pwd)")"
+export AFLNET="$(pwd)"
+export WORKDIR="$(dirname "$(pwd)")"
+export PATH=$PATH:$AFLNET
+export AFL_PATH=$AFLNET
+
 LLVM_MODE_DIR="$AFLNET"/llvm_mode
 LIVE555="$WORKDIR"/live555
 LIVE555_TESTPROGS="$LIVE555"/testProgs
+
 
 cd "$AFLNET"
 make all
 cd "$LLVM_MODE_DIR"
 make
 
+rm -rf "$LIVE555"
 cd "$WORKDIR"
 git clone https://github.com/rgaufman/live555.git "$LIVE555"
 
@@ -23,6 +28,10 @@ make clean all
 cd "$LIVE555_TESTPROGS"
 
 cp "$AFLNET"/tutorials/live555/sample_media_sources/*.* ./
+
+sudo sh -c "cd /sys/devices/system/cpu && echo performance | tee cpu*/cpufreq/scaling_governor"
+
+echo "$(which afl-fuzz)"
 
 afl-fuzz -d -i "$AFLNET"/tutorials/live555/in-rtsp \
 -o out-live555 -N tcp://127.0.0.1/8554 \

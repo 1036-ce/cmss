@@ -17,7 +17,7 @@ make
 
 rm -rf "$LIVE555"
 cd "$WORKDIR"
-git clone https://github.com/rgaufman/live555.git "$LIVE555"
+git clone git@github.com:rgaufman/live555.git "$LIVE555"
 
 cd "$LIVE555"
 git checkout ceeb4f4
@@ -29,6 +29,7 @@ cd "$LIVE555_TESTPROGS"
 
 cp "$AFLNET"/tutorials/live555/sample_media_sources/*.* ./
 
+sudo sh -c "echo core >/proc/sys/kernel/core_pattern"
 sudo sh -c "cd /sys/devices/system/cpu && echo performance | tee cpu*/cpufreq/scaling_governor"
 
 echo "$(which afl-fuzz)"

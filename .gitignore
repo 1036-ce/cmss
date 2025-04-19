@@ -13,8 +13,7 @@ afl-tmin
 aflnet-replay
 aflnet.o
 as
-master
-slave
+cmss
 
 # Binaries produced by "make -C llvm_mode"
 afl-clang-fast

@@ -33,6 +33,7 @@ CFLAGS     += -Wall -D_FORTIFY_SOURCE=2 -g -Wno-pointer-sign -Wno-unused-result 
 	      -DBIN_PATH=\"$(BIN_PATH)\"
 
 CXXFLAGS ?= -g
+CXXLDFLAGS += -lcrypto
 
 ifneq "$(filter Linux GNU%,$(shell uname))" ""
   LDFLAGS  += -ldl -lgvc -lcgraph -lm -lcap
@@ -45,10 +46,10 @@ else
 endif
 
 COMM_HDR    = alloc-inl.h config.h debug.h types.h
-CMSS_HDR = args.h cmss_config.h message.h ring_buffer.h shm_info.h cmd.h msg_queue.h shared_data.h utils.h log.h seed_info.h
-CMSS_OBJ = args.o message.o ring_buffer.o shm_info.o msg_queue.o shared_data.o utils.o log.o seed_info.o
+CMSS_HDR = args.h cmss_config.h message.h ring_buffer.h shm_info.h cmd.h msg_queue.h shared_data.h log.h seed_info.h
+CMSS_OBJ = args.o message.o ring_buffer.o shm_info.o msg_queue.o shared_data.o log.o seed_info.o
 
-all: test_x86 $(PROGS) master slave afl-as test_build all_done 
+all: test_x86 $(PROGS) cmss afl-as test_build all_done 
 
 ifndef AFL_NO_X86
 
@@ -73,15 +74,12 @@ afl-as: afl-as.c afl-as.h $(COMM_HDR) | test_x86
 	$(CC) $(CFLAGS) $@.c -o $@ $(LDFLAGS)
 	ln -sf afl-as as
 
-master: master.cpp ${CMSS_OBJ} ${CMSS_HDR} | test_x86
-	$(CXX) ${CXXFLAGS} $@.cpp ${CMSS_OBJ} -o $@
-
-slave: slave.c ${CMSS_OBJ} ${CMSS_HDR} | test_x86
-	${CC} $@.c ${CMSS_OBJ} -o $@
+cmss: cmss.cpp ${CMSS_OBJ} master.o ${CMSS_HDR} master.h | test_x86
+	$(CXX) ${CXXFLAGS} $@.cpp ${CMSS_OBJ} master.o -o $@ ${CXXLDFLAGS}
 
 # afl-fuzz: afl-fuzz.c $(COMM_HDR) aflnet.o aflnet.h args.o args.h | test_x86
-afl-fuzz: afl-fuzz.c $(COMM_HDR) aflnet.o aflnet.h $(CMSS_OBJ) $(CMSS_HDR) | test_x86
-	$(CC) $(CFLAGS) $@.c aflnet.o ${CMSS_OBJ} -o $@ $(LDFLAGS)
+afl-fuzz: afl-fuzz.c $(COMM_HDR) aflnet.o aflnet.h $(CMSS_OBJ) slave.o $(CMSS_HDR) slave.h | test_x86
+	$(CC) $(CFLAGS) $@.c aflnet.o ${CMSS_OBJ} slave.o -o $@ $(LDFLAGS)
 
 afl-replay: afl-replay.c $(COMM_HDR) aflnet.o aflnet.h | test_x86
 	$(CC) $(CFLAGS) $@.c aflnet.o -o $@ $(LDFLAGS)
@@ -128,7 +126,7 @@ all_done: test_build
 .NOTPARALLEL: clean
 
 clean:
-	rm -f $(PROGS) master slave afl-as as afl-g++ afl-clang afl-clang++ *.o *~ a.out core core.[1-9][0-9]* *.stackdump test .test test-instr .test-instr0 .test-instr1 qemu_mode/qemu-2.10.0.tar.bz2 afl-qemu-trace
+	rm -f $(PROGS) cmss afl-as as afl-g++ afl-clang afl-clang++ *.o *~ a.out core core.[1-9][0-9]* *.stackdump test .test test-instr .test-instr0 .test-instr1 qemu_mode/qemu-2.10.0.tar.bz2 afl-qemu-trace
 	rm -rf out_dir qemu_mode/qemu-2.10.0
 	$(MAKE) -C llvm_mode clean
 	$(MAKE) -C libdislocator clean

@@ -1,5 +1,3 @@
-#include <stdlib.h>
-#include <string.h>
 #include <unistd.h>
 #include <stdio.h>
 
@@ -11,6 +9,7 @@ args_t args_common(int sid) {
   args.skip_deterministic = 1;
   args.state_selection_algo = 3;
   args.seed_selection_algo = 3;
+  args.state_aware_mode = 1;
   args.terminate_child = 1;
   args.region_level_mutation = 1;
   return args;

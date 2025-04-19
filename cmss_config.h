@@ -8,6 +8,7 @@
 #define MSG_QUEUE_SIZE 1048576 
 #define MESSAGE_SIZE  2048
 #define ARGS_BUF_SIZE  64
-#define FILE_NAME_SIZE 64
+#define FILE_NAME_SIZE 128
 
 static const char *CMSS_SHM_NAME = "mss_shm";
+static const char *MASTER_DIR_NAME = "master";

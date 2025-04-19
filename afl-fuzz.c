@@ -47,7 +47,7 @@
 #include "shared_data.h"
 #include "msg_queue.h"
 #include "message.h"
-#include "utils.h"
+#include "slave.h"
 #include "cmss_config.h"
 #include "log.h"
 
@@ -108,7 +108,6 @@ shared_data_t* shada;
 int sid;
 ring_buffer_t *ring_buf;
 msg_queue_t* msg_que;
-
 
 /* Lots of globals, but mostly for the status UI and other things where it
    really makes no sense to haul them around as function parameters. */
@@ -1613,14 +1612,18 @@ static void add_to_queue(u8* fname, u32 len, u8 passed_det) {
   q->is_initial_seed = 0;
   q->unique_state_count = 0;
 
-  if (q->depth > max_depth) max_depth = q->depth;
+  if (q->depth > max_depth) {
+    max_depth = q->depth;
+  }
 
   if (queue_top) {
 
     queue_top->next = q;
     queue_top = q;
 
-  } else q_prev100 = queue = queue_top = q;
+  } else {
+    q_prev100 = queue = queue_top = q;
+  }
 
   queued_paths++;
   pending_not_fuzzed++;
@@ -1646,13 +1649,17 @@ static void add_to_queue(u8* fname, u32 len, u8 passed_det) {
     u32 byte_count = fread(buf, 1, len, fp);
     fclose(fp);
 
-    if (byte_count != len) PFATAL("AFLNet - Inconsistent file length '%s'", fname);
+    if (byte_count != len) {
+      PFATAL("AFLNet - Inconsistent file length '%s'", fname);
+    }
     q->regions = (*extract_requests)(buf, len, &q->region_count);
     ck_free(buf);
 
     //Keep track the maximal number of seed regions
     //We use this for some optimization to reduce the overhead while following the server's sequence diagram
-    if ((corpus_read_or_sync == 1) && (q->region_count > max_seed_region_count)) max_seed_region_count = q->region_count;
+    if ((corpus_read_or_sync == 1) && (q->region_count > max_seed_region_count)) {
+      max_seed_region_count = q->region_count;
+    }
 
   } else {
     //Convert the linked list kl_messages to regions
@@ -1812,7 +1819,9 @@ static inline u8 has_new_bits(u8* virgin_map) {
 
   }
 
-  if (ret && virgin_map == virgin_bits) bitmap_changed = 1;
+  if (ret && virgin_map == virgin_bits) {
+    bitmap_changed = 1;
+  }
 
   return ret;
 
@@ -3227,8 +3236,9 @@ static u8 run_target(char** argv, u32 timeout) {
 
       /* Move the process to the different namespace. */
 
-      if (netns_name)
+      if (netns_name) {
         move_process_to_netns();
+      }
 
       /* Isolate the process and configure standard descriptors. If out_file is
          specified, stdin is /dev/null; otherwise, out_fd is cloned instead. */
@@ -3312,11 +3322,17 @@ static u8 run_target(char** argv, u32 timeout) {
   /* The SIGALRM handler simply kills the child_pid and sets child_timed_out. */
 
   if (dumb_mode == 1 || no_forkserver) {
-    if (use_net) send_over_network();
-    if (waitpid(child_pid, &status, 0) <= 0) PFATAL("waitpid() failed");
+    if (use_net) {
+      send_over_network();
+    }
+    if (waitpid(child_pid, &status, 0) <= 0) {
+      PFATAL("waitpid() failed");
+    }
 
   } else {
-    if (use_net) send_over_network();
+    if (use_net) {
+      send_over_network();
+    }
     s32 res;
 
     if ((res = read(fsrv_st_fd, &status, 4)) != 4) {
@@ -4028,7 +4044,9 @@ static u8 save_if_interesting(char** argv, void* mem, u32 len, u8 fault) {
        future fuzzing, etc. */
 
     if (!(hnb = has_new_bits(virgin_bits))) {
-      if (crash_mode) total_crashes++;
+      if (crash_mode) {
+        total_crashes++;
+      }
       return 0;
     }
 
@@ -5421,11 +5439,12 @@ static void show_init_stats(void) {
 
 }
 
+
 /* Write a modified test case, run program, process results. Handle
    error conditions, returning 1 if it's time to bail out. This is
    a helper function for fuzz_one(). */
 
-EXP_ST u8 common_fuzz_stuff(char** argv, u8* out_buf, u32 len) {
+EXP_ST u8 common_fuzz_stuff_orig(char** argv, u8* out_buf, u32 len) {
 
   u8 fault;
 
@@ -5551,7 +5570,6 @@ EXP_ST u8 common_fuzz_stuff(char** argv, u8* out_buf, u32 len) {
     seed_info_set_file_name(queue_top->fname, strlen(queue_top->fname), &seed_info);
     slave_send_seed_info(msg_que, sid, &seed_info);
     log_info("slave %d send SYNC_SEED to master, send_file_name: %s", sid, seed_info.seed_file_name);
-    msg_queue_dump(msg_que);
   }
   queued_discovered += is_interesting;
 
@@ -5562,6 +5580,101 @@ EXP_ST u8 common_fuzz_stuff(char** argv, u8* out_buf, u32 len) {
 
 }
 
+void slave_sync_seed_handler(const mss_message_t* receive_msg, char **argv) {
+	seed_info_t seed_info;
+  memset(&seed_info, 0, sizeof(seed_info_t));
+	memcpy(&seed_info, receive_msg->data, receive_msg->len);
+
+  const char* seed_path = seed_info.seed_file_name;
+  log_info("slave %d: receive seed %s from master", sid, seed_path);
+  int fd = open(seed_path, O_RDONLY);
+  struct stat file_stat;
+  if (fstat(fd, &file_stat) == -1) {
+    log_error("slave %d: fstat error", sid);
+    exit(1);
+  }
+
+  /* Ignore zero-sized or oversized files. */
+
+  if (file_stat.st_size && file_stat.st_size <= MAX_FILE) {
+
+    u8  fault;
+    u8* mem = mmap(0, file_stat.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+
+    if (mem == MAP_FAILED) {
+      PFATAL("Unable to mmap '%s'", seed_path);
+    }
+
+    /* See what happens. We rely on save_if_interesting() to catch major
+       errors and save the test case. */
+    write_to_testcase(mem, file_stat.st_size);
+
+    region_t *regions;
+    u32 region_count;
+    regions = (*extract_requests)(mem, file_stat.st_size, &region_count);
+    kl_messages = construct_kl_messages((u8*)seed_path, regions, region_count);
+
+    fault = run_target(argv, exec_tmout);
+
+    if (stop_soon) {
+      return;
+    }
+    /* AFLNet: set this flag to enable request extractions while adding new seed to the queue */
+    corpus_read_or_sync = 2;
+    u8 is_interesting = save_if_interesting(argv, mem, file_stat.st_size, fault);
+    if (is_interesting) {
+      log_info("slave %d: have save %s to local seed pool", sid, seed_path);
+    }
+    else {
+      log_info("slave %d: don't have save %s to local seed pool", sid, seed_path);
+    }
+    queued_imported += is_interesting;
+
+    /* AFLNet delete the kl_messages */
+    ck_free(regions);
+    delete_kl_messages(kl_messages);
+
+    /* AFLNet: unset this flag to disable request extractions while adding new seed to the queue */
+    corpus_read_or_sync = 0;
+
+    munmap(mem, file_stat.st_size);
+    if (!(stage_cur++ % stats_update_freq)) {
+      show_stats();
+    }
+  }
+  close(fd);
+}
+
+u8 common_fuzz_stuff(char** argv, u8* out_buf, u32 len) {
+
+  // stash global variable `kl_messages`
+  klist_t(lms) *kl_messages_stash = kl_messages;
+
+  mss_message_t receive_msg;
+  while (slave_try_fetch(ring_buf, &receive_msg)) {
+    switch (receive_msg.cmd) {
+    case SEED_ENSURE: {
+      log_info("slave %d: receive SEED_ENSURE from master",
+               sid);
+      break;
+    }
+    case SYNC_SEED: {
+      log_info("slave %d: receive SYNC_SEED from master", sid);
+      slave_sync_seed_handler(&receive_msg, argv);
+      break;
+    }
+    default: {
+      log_warn("slave %d: receive wrong cmd from master",
+               sid);
+      break;
+    }
+    }
+  }
+
+  // restore global variable `kl_messages`
+  kl_messages = kl_messages_stash;
+  return common_fuzz_stuff_orig(argv, out_buf, len);
+}
 
 /* Helper to choose random block len for block operations in fuzz_one().
    Doesn't return zero, provided that max_len is > 0. */
@@ -5670,7 +5783,9 @@ static u32 calculate_score(struct queue_entry* q) {
 
   /* Make sure that we don't go over limit. */
 
-  if (perf_score > HAVOC_MAX_MULT * 100) perf_score = HAVOC_MAX_MULT * 100;
+  if (perf_score > HAVOC_MAX_MULT * 100) {
+    perf_score = HAVOC_MAX_MULT * 100;
+  }
 
   return perf_score;
 
@@ -5890,7 +6005,9 @@ static u8 fuzz_one(char** argv) {
 
   //Skip some steps if in state_aware_mode because in this mode
   //the seed is selected based on state-aware algorithms
-  if (state_aware_mode) goto AFLNET_REGIONS_SELECTION;
+  if (state_aware_mode) {
+    goto AFLNET_REGIONS_SELECTION;
+  }
 
   if (pending_favored) {
 
@@ -7764,7 +7881,9 @@ static void sync_fuzzers(char** argv) {
 
       if (qd_ent->d_name[0] == '.' ||
           sscanf(qd_ent->d_name, CASE_PREFIX "%06u", &syncing_case) != 1 ||
-          syncing_case < min_accept) continue;
+          syncing_case < min_accept) {
+        continue;
+      }
 
       /* OK, sounds like a new one. Let's give it a try. */
 
@@ -7782,7 +7901,9 @@ static void sync_fuzzers(char** argv) {
          continue;
       }
 
-      if (fstat(fd, &st)) PFATAL("fstat() failed");
+      if (fstat(fd, &st)) {
+        PFATAL("fstat() failed");
+      }
 
       /* Ignore zero-sized or oversized files. */
 
@@ -9305,7 +9426,31 @@ int main(int argc, char** argv) {
       PFATAL("No server states have been detected. Server responses are likely empty!");
     }
 
+    log_info("slave %d into fuzzing loop...", sid);
     while (1) {
+      mss_message_t receive_msg;
+      if (slave_try_fetch(ring_buf, &receive_msg)) {
+        switch (receive_msg.cmd) {
+        case SEED_ENSURE: {
+          log_info("slave %d receive SEED_ENSURE from master",
+                   sid);
+          break;
+        }
+        case SYNC_SEED: {
+          log_info("slave %d receive SYNC_SEED from master", sid);
+          break;
+        }
+        default: {
+          log_warn("slave %d receive wrong cmd from master",
+                   sid);
+          break;
+        }
+			  }
+      }
+      else {
+        log_info("slave %d no msg", sid);
+      }
+
       u8 skipped_fuzz;
 
       struct queue_entry *selected_seed = NULL;
@@ -9344,7 +9489,9 @@ int main(int argc, char** argv) {
         }
       }
 
+      log_info("fuzz_one start");
       skipped_fuzz = fuzz_one(use_argv);
+      log_info("fuzz_one done");
 
       if (!stop_soon && sync_id && !skipped_fuzz) {
 
@@ -9359,6 +9506,7 @@ int main(int argc, char** argv) {
     }
 
   } else {
+    log_info("slave %d run in dump mode", sid);
     while (1) {
 
       u8 skipped_fuzz;

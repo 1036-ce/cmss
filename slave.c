@@ -1,56 +1,47 @@
-#include <fcntl.h>
-#include <limits.h>
-#include <sys/mman.h>
-#include <sys/wait.h>
-#include <semaphore.h>
-#include <unistd.h>
+#include "slave.h"
 
-#include "cmss_config.h"
-#include "utils.h"
-#include "shared_data.h"
-#include "shm_info.h"
-#include "message.h"
-
-void task() {
-  sleep(2);
+bool slave_try_fetch(ring_buffer_t* ring_buf, mss_message_t* msg) {
+  int len;
+  bool success = ring_buf_try_get_msg(ring_buf, (char*)msg, &len);
+  return success;
 }
 
-void args_dump(int argc, char **argv) {
-  for (int i = 0; i < argc; ++i) {
-    printf("%s ", argv[i]);
-  }
-  printf("\n");
+void slave_fetch(ring_buffer_t* ring_buf, mss_message_t* msg) {
+  int len;
+  ring_buf_get_msg(ring_buf, (char*)msg, &len);
 }
 
-int main(int argc, char **argv) {
-  // init
-  shm_info_t shm_info;
-  shm_lookup(CMSS_SHM_NAME, &shm_info);
-  shared_data_t* shada = (shared_data_t*)(shm_info.data);
-  int sid = get_sid(shada);
-  ring_buffer_t* ring_buf = get_local_ring_buf(sid, shada);
-  msg_queue_t* msg_que = &(shada->msg_que);
+void slave_send(msg_queue_t* msg_que, const mss_message_t *msg, const int len) {
+  msg_queue_push_msg(msg_que, (const char*)msg, len);
+}
 
-  printf("slave %d: get sid: %d\n", sid, sid);
-  args_dump(argc, argv);
+void slave_send_args_ensure(msg_queue_t* msg_que, int sid) {
+  mss_message_t msg;
+  msg.from = sid;
+  msg.to = -1;
+  msg.cmd = ARGS_ENSURE;
+  msg.len = 0;
+  slave_send(msg_que, &msg, message_real_length(&msg));
+}
 
-  mss_message_t receive_msg;
-  mss_message_t send_msg;
+void slave_send_seed_info(msg_queue_t* msg_que, int sid, const seed_info_t* seed_info) {
+  mss_message_t msg;
+  msg.from = sid;
+  msg.to = -1;
+  msg.cmd = SYNC_SEED;
+  msg.len = sizeof(seed_info_t);
+  memcpy(msg.data, seed_info, sizeof(seed_info_t));
+  slave_send(msg_que, &msg, message_real_length(&msg));
+}
 
-  while (true) {
-    if (slave_try_fetch(ring_buf, &receive_msg)) {
-      printf("slave %d: received msg from master, num: %d\n", sid, receive_msg.num);
-      int num = receive_msg.num;
-      send_msg.from = sid;
-      send_msg.to = -1;
-      send_msg.num = num + 1;
-      send_msg.len = 0;
-      slave_send(msg_que, &send_msg, message_real_length(&send_msg));
-      printf("slave %d: send msg from slave %d to master, num: %d\n", sid, sid, send_msg.num);
-    }
-    else {
-      fprintf(stderr, "slave %d : no msg\n", sid);
-      task();
-    }
-  } 
+int get_sid(shared_data_t* shada) {
+  sem_wait(&shada->sid_mtx);
+  int sid = shada->sid;
+  ++shada->sid;
+  sem_post(&shada->sid_mtx);
+  return sid;
+}
+
+ring_buffer_t* get_local_ring_buf(int sid, shared_data_t* shada) {
+  return &shada->ring_bufs[sid];
 }

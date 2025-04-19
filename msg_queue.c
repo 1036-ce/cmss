@@ -112,7 +112,6 @@ void msg_queue_push(msg_queue_t *msg_que, const char* data, const int len) {
     msg_que->data[pos] = data[i];
   }
   msg_que->tail = (msg_que->tail + len) % MSG_QUEUE_SIZE;
-  log_info("after: msg_que->tail: %d, len: %d", msg_que->tail, len);
 }
 
 void msg_queue_pop(msg_queue_t *msg_que, const int len) {

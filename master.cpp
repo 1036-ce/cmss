@@ -1,39 +1,7 @@
-#include <fcntl.h>
-#include <limits.h>
-#include <stdlib.h>
-#include <sys/mman.h>
-#include <sys/wait.h>
-#include <unistd.h>
+#include <sys/stat.h>
+#include <openssl/sha.h>
 
-extern "C" {
-#include "args.h"
-#include "cmss_config.h"
-#include "log.h"
-#include "message.h"
-#include "msg_queue.h"
-#include "shared_data.h"
-#include "shm_info.h"
-#include "utils.h"
-}
-
-// indicates whether the program should stop
-bool should_stop = false;
-
-static void handle_stop_sig(int sig) {
-	should_stop = true;
-}
-
-void sig_setup() {
-	struct sigaction sa;
-
-	sa.sa_handler   = NULL;
-	sa.sa_flags     = SA_RESTART;
-	sa.sa_sigaction = NULL;
-
-	sigemptyset(&sa.sa_mask);
-	sa.sa_handler = handle_stop_sig;
-	sigaction(SIGINT, &sa, NULL);
-}
+#include "master.h"
 
 void log_init() {
 	FILE *fp = fopen("master.log", "a");
@@ -41,110 +9,113 @@ void log_init() {
 	log_add_fp(fp, LOG_TRACE);
 }
 
-void server(int slave_cnt, shared_data_t *shada, shm_info_t *shm_info) {
-	msg_queue_t *msg_que = &(shada->msg_que);
-  msg_queue_dump(msg_que);
-
-	mss_message_t receive_msg;
-	mss_message_t send_msg;
-	int len;
-
-	send_msg.from = -1;
-	send_msg.num  = 1;
-	for (int i = 0; i < slave_cnt; ++i) {
-		args_t args = args_common(i);
-		memcpy(send_msg.data, &args, sizeof(args_t));
-		send_msg.len = sizeof(args_t);
-		send_msg.to  = i;
-		send_msg.cmd = ARGS;
-		master_send_one(i, shada, &send_msg, message_real_length(&send_msg));
-		log_info("master send args to slave %d", i);
-	}
-
-	while (true) {
-		if (should_stop) {
-			killpg(0, SIGINT);
-			wait(NULL);
-			shared_data_dtor(slave_cnt, shada);
-			shm_dtor(shm_info);
-			log_info("fuzzing done");
-			return;
-		}
-		if (master_try_fetch(msg_que, &receive_msg)) {
-      msg_queue_dump(msg_que);
-			switch (receive_msg.cmd) {
-			case ARGS_ENSURE: {
-				log_info("master receive ARGS_ENSURE from slave %d",
-				         receive_msg.from);
-				break;
-			}
-			case SEED_ENSURE: {
-				log_info("master receive SEED_ENSURE from slave %d",
-				         receive_msg.from);
-				break;
-			}
-			case SYNC_SEED: {
-				seed_info_t seed_info;
-				memcpy(&seed_info, receive_msg.data, receive_msg.len);
-				log_info("master receive SYNC_SEED from slave %d, "
-				         "seed_file_name is: %s",
-				         receive_msg.from, seed_info.seed_file_name);
-				break;
-			}
-			default: {
-				log_warn("master receive wrong cmd from slave %d",
-				         receive_msg.from);
-				break;
-			}
-			}
-			/*       printf("master: received msg from slave %d, num : %d\n",
-			 * receive_msg.from, receive_msg.num);
-			 *
-			 *       send_msg.from = -1;
-			 *       send_msg.to = receive_msg.from;
-			 *       send_msg.num = receive_msg.num + 1;
-			 *       send_msg.len = 0;
-			 *       master_send_one(send_msg.to, shada, &send_msg,
-			 * message_real_length(&send_msg)); */
-		} else {
-			// log_trace("master do not receive message form any slave");
-			sleep(1);
-		}
-	}
+std::string get_sha512_str(const char *str, const int len) {
+	unsigned char hash[SHA512_DIGEST_LENGTH];
+	SHA512((const unsigned char *)str, len, hash);
+	return std::string{(char *)hash};
 }
 
-int main(int argc, char **argv) {
+void master_sync_seed_handler(
+    int slave_cnt, shared_data_t *shada,
+    std::unordered_map<std::string, seed_info_t> &seed_pool,
+    const mss_message_t &receive_msg) {
 
-	sig_setup();
-	log_init();
+	seed_info_t seed_info;
+  memset(&seed_info, 0, sizeof(seed_info_t));
+	memcpy(&seed_info, receive_msg.data, receive_msg.len);
+	log_info("master: receive SYNC_SEED from slave %d, "
+	         "seed_file_name is: %s",
+	         receive_msg.from, seed_info.seed_file_name);
 
-	int slave_cnt = 3;
-	shm_info_t shm_info;
-	shm_init(CMSS_SHM_NAME, sizeof(shared_data_t), &shm_info);
-	shared_data_t *shada = (shared_data_t *)(shm_info.data);
-	shared_data_init(slave_cnt, shada);
-	char *slave_path  = get_slave_path(argc, argv);
-	char **slave_argv = gen_slave_argv(argc, argv);
-
-	pid_t pid;
-	for (int i = 0; i < slave_cnt; ++i) {
-		pid = fork();
-		if (pid == 0 || pid == -1) {
-			break;
-		}
-	}
-	if (pid == -1) {
-		perror("fork");
+	int fd = open(seed_info.seed_file_name, O_RDONLY);
+	struct stat file_stat;
+	if (fstat(fd, &file_stat) == -1) {
+		perror("fstat");
 		exit(1);
 	}
-	if (pid == 0) {
-		execv(slave_path, slave_argv);
-		perror("slave");
-		exit(1);
-	}
+	char *str =
+	    (char *)mmap(nullptr, file_stat.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
 
-	server(slave_cnt, shada, &shm_info);
-	free(slave_argv);
+  std::string sha512 = get_sha512_str(str, file_stat.st_size);
+	munmap(str, file_stat.st_size);
+	close(fd);
 
-	return 0;
+  if (seed_pool.count(sha512) == 0) {
+    seed_pool[sha512] = seed_info;
+  }
+  else {
+    log_info("seed: %s has existed in global seed pool", seed_info.seed_file_name);
+    return;
+  }
+
+
+	mss_message_t send_msg;
+	send_msg.from = -1;
+	send_msg.to   = -2;
+	send_msg.cmd  = SYNC_SEED;
+	send_msg.len  = receive_msg.len;
+	memcpy(send_msg.data, &seed_info, receive_msg.len);
+	master_send_all_except(slave_cnt, receive_msg.from, shada, &send_msg,
+	                       message_real_length(&send_msg));
+	log_info("master: send all other slaves SYNC_SEED");
+
+	send_msg.from = -1;
+	send_msg.to   = receive_msg.from;
+	send_msg.cmd  = SEED_ENSURE;
+	send_msg.len  = 0;
+	master_send_one(receive_msg.from, shada, &send_msg,
+	                message_real_length(&send_msg));
+	log_info("master: send slave %d SEED_ENSURE", receive_msg.from);
+
+}
+
+
+void master_send_one(int sid, shared_data_t* shada, const mss_message_t *msg, const int len) {
+  ring_buffer_t *ring_buf = &shada->ring_bufs[sid];
+  ring_buf_push_msg(ring_buf, (const char*)msg, len);
+}
+
+void master_send_all(int slave_cnt, shared_data_t* shada, const mss_message_t *msg, const int len) {
+  for (int sid = 0; sid < slave_cnt; ++sid) {
+    master_send_one(sid, shada, msg, len);
+  }
+}
+
+void master_send_all_except(int slave_cnt, int sid, shared_data_t* shada, const mss_message_t *msg, const int len) {
+  for (int id = 0; id < slave_cnt; ++id) {
+    if (id == sid) {
+      continue;
+    }
+    master_send_one(id, shada, msg, len);
+  }
+}
+
+bool master_try_fetch(msg_queue_t* msg_que, mss_message_t* msg) {
+  int len;
+  bool success = msg_queue_try_get_msg(msg_que, (char*)msg, &len);
+  return success;
+}
+
+void master_fetch(msg_queue_t* msg_que, mss_message_t* msg) {
+  int len;
+  msg_queue_get_msg(msg_que, (char*)msg, &len);
+}
+
+char* get_slave_path(int argc, char **argv) {
+  char *path = realpath(*(argv + 1), NULL);
+  return path;
+}
+
+char** gen_slave_argv(int argc, char **argv) {
+  char** slave_argv = (char**)malloc(sizeof(char*) * argc);
+
+  for (int i = 1; i < argc; ++i) {
+    slave_argv[i - 1] = argv[i];
+  }
+  slave_argv[argc] = NULL;
+
+  return slave_argv;
+}
+
+void master_dir_init() {
 }

@@ -26,7 +26,7 @@ sudo sh -c "cd /sys/devices/system/cpu && echo performance | tee cpu*/cpufreq/sc
 # -P RTSP -D 10000 -q 3 -s 3 -E -K -R \
 # ./testOnDemandRTSPServer 8554
 
-"${AFLNET}"/master "${AFLNET}"/afl-fuzz \
+"${AFLNET}"/cmss "${AFLNET}"/afl-fuzz \
 -i "${INPUT_DIR}" \
 -N tcp://127.0.0.1/8554 \
 -x "${EXTRAS_DIR}" \

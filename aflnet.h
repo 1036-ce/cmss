@@ -3,6 +3,7 @@
 
 #include "klist.h"
 #include "khash.h"
+#include "types.h"
 #include <arpa/inet.h>
 #include <poll.h>
 

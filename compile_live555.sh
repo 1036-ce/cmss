@@ -25,5 +25,4 @@ patch -p1 < "$AFLNET"/tutorials/live555/ceeb4f4.patch
 ./genMakefiles linux
 make clean all
 
-cd "$AFLNET"
-cp "$AFLNET"/tutorials/live555/sample_media_sources/*.* ./
+cp "${LIVE555}"/testProgs/testOnDemandRTSPServer "${AFLNET}"/test

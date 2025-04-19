@@ -42,14 +42,6 @@
 #include "debug.h"
 #include "alloc-inl.h"
 #include "hash.h"
-#include "args.h"
-#include "shm_info.h"
-#include "shared_data.h"
-#include "msg_queue.h"
-#include "message.h"
-#include "utils.h"
-#include "cmss_config.h"
-#include "log.h"
 
 #include <stdio.h>
 #include <unistd.h>
@@ -100,18 +92,9 @@
 #  define EXP_ST static
 #endif /* ^AFL_LIB */
 
-
-// cmss global variables
-args_t args;
-shm_info_t shm_info;
-shared_data_t* shada;
-int sid;
-ring_buffer_t *ring_buf;
-msg_queue_t* msg_que;
-
-
 /* Lots of globals, but mostly for the status UI and other things where it
    really makes no sense to haul them around as function parameters. */
+
 
 EXP_ST u8 *in_dir,                    /* Input directory with test cases  */
           *out_file,                  /* File to fuzz, if any             */
@@ -4013,8 +3996,7 @@ static void write_crash_readme(void) {
 /* Check if the result of an execve() during routine fuzzing is interesting,
    save or queue the input test case for further analysis if so. Returns 1 if
    entry is saved, 0 otherwise. */
-// if seed is interesting ,insert it to the top of queue, and variable queue_top 
-// reference this seed
+
 static u8 save_if_interesting(char** argv, void* mem, u32 len, u8 fault) {
 
   u8  *fn = "";
@@ -5546,13 +5528,6 @@ EXP_ST u8 common_fuzz_stuff(char** argv, u8* out_buf, u32 len) {
 
   /* queued_discovered += save_if_interesting(argv, out_buf, len, fault); */
   u8 is_interesting = save_if_interesting(argv, out_buf, len, fault);
-  if (is_interesting) {
-    seed_info_t seed_info;
-    seed_info_set_file_name(queue_top->fname, strlen(queue_top->fname), &seed_info);
-    slave_send_seed_info(msg_que, sid, &seed_info);
-    log_info("slave %d send SYNC_SEED to master, send_file_name: %s", sid, seed_info.seed_file_name);
-    msg_queue_dump(msg_que);
-  }
   queued_discovered += is_interesting;
 
   if (!(stage_cur % stats_update_freq) || stage_cur + 1 == stage_max)
@@ -8867,47 +8842,6 @@ static int check_ep_capability(cap_value_t cap, const char *filename) {
 
 #ifndef AFL_LIB
 
-void log_init(int sid) {
-  char log_file[64];
-  sprintf(log_file, "slave%d.log", sid);
-	FILE *fp = fopen(log_file, "a");
-	log_set_level(LOG_ERROR);
-	log_add_fp(fp, LOG_TRACE);
-}
-
-void args_setup() {
-  out_dir = args.out_dir;
-  if (args.skip_deterministic) {
-    skip_deterministic = 1;
-    use_splicing = 1;
-  }
-  state_selection_algo = args.state_selection_algo;
-  seed_selection_algo = args.seed_selection_algo;
-  state_aware_mode = args.state_aware_mode;
-  terminate_child = args.terminate_child;
-  region_level_mutation = args.region_level_mutation;
-}
-
-void slave_init() {
-  shm_lookup(CMSS_SHM_NAME, &shm_info);
-  shada = (shared_data_t*)(shm_info.data);
-  sid = get_sid(shada);
-  log_init(sid);
-  ring_buf = get_local_ring_buf(sid, shada);
-  msg_que = &(shada->msg_que);
-
-  mss_message_t receive_msg;
-  slave_fetch(ring_buf, &receive_msg);
-  if (receive_msg.cmd != ARGS) {
-    fprintf(stderr, "slave init failed: wrong cmd\n");
-    exit(1);
-  }
-  memcpy(&args, receive_msg.data, receive_msg.len);
-  slave_send_args_ensure(msg_que, sid);
-  log_info("slave %d send ARGS_ENSURE to master", sid);
-  msg_queue_dump(msg_que);
-}
-
 /* Main entry point */
 int main(int argc, char** argv) {
 
@@ -8929,12 +8863,7 @@ int main(int argc, char** argv) {
   gettimeofday(&tv, &tz);
   srandom(tv.tv_sec ^ tv.tv_usec ^ getpid());
 
-  slave_init();
-  args_setup();
-  /* exit(1); */
-
-
-  while ((opt = getopt(argc, argv, "+i:f:m:t:T:nCB:S:M:x:QN:D:W:w:e:P:Fc:l:")) > 0) {
+  while ((opt = getopt(argc, argv, "+i:o:f:m:t:T:dnCB:S:M:x:QN:D:W:w:e:P:KEq:s:RFc:l:")) > 0) {
 
     switch (opt) {
 
@@ -8945,6 +8874,41 @@ int main(int argc, char** argv) {
 
         if (!strcmp(in_dir, "-")) in_place_resume = 1;
 
+        break;
+
+      case 'o': /* output dir */
+
+        if (out_dir) FATAL("Multiple -o options not supported");
+        out_dir = optarg;
+        break;
+
+      case 'M': { /* master sync ID */
+
+          u8* c;
+
+          if (sync_id) FATAL("Multiple -S or -M options not supported");
+          sync_id = ck_strdup(optarg);
+
+          if ((c = strchr(sync_id, ':'))) {
+
+            *c = 0;
+
+            if (sscanf(c + 1, "%u/%u", &master_id, &master_max) != 2 ||
+                !master_id || !master_max || master_id > master_max ||
+                master_max > 1000000) FATAL("Bogus master ID passed to -M");
+
+          }
+
+          force_deterministic = 1;
+
+        }
+
+        break;
+
+      case 'S':
+
+        if (sync_id) FATAL("Multiple -S or -M options not supported");
+        sync_id = ck_strdup(optarg);
         break;
 
       case 'f': /* target file */
@@ -9011,6 +8975,13 @@ int main(int argc, char** argv) {
 
         }
 
+        break;
+
+      case 'd': /* skip deterministic */
+
+        if (skip_deterministic) FATAL("Multiple -d options not supported");
+        skip_deterministic = 1;
+        use_splicing = 1;
         break;
 
       case 'B': /* load bitmap */
@@ -9154,6 +9125,29 @@ int main(int argc, char** argv) {
 
         protocol_selected = 1;
 
+        break;
+
+      case 'K':
+        if (terminate_child) FATAL("Multiple -K options not supported");
+        terminate_child = 1;
+        break;
+
+      case 'E':
+        if (state_aware_mode) FATAL("Multiple -E options not supported");
+        state_aware_mode = 1;
+        break;
+
+      case 'q': /* state selection option */
+        if (sscanf(optarg, "%hhu", &state_selection_algo) < 1 || optarg[0] == '-') FATAL("Bad syntax used for -q");
+        break;
+
+      case 's': /* seed selection option */
+        if (sscanf(optarg, "%hhu", &seed_selection_algo) < 1 || optarg[0] == '-') FATAL("Bad syntax used for -s");
+        break;
+
+      case 'R':
+        if (region_level_mutation) FATAL("Multiple -R options not supported");
+        region_level_mutation = 1;
         break;
 
       case 'F':

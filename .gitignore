@@ -13,6 +13,8 @@ afl-tmin
 aflnet-replay
 aflnet.o
 as
+master
+slave
 
 # Binaries produced by "make -C llvm_mode"
 afl-clang-fast
@@ -23,3 +25,10 @@ afl-llvm-rt-64.o
 afl-llvm-rt.o
 
 out-live555
+
+.cache
+.cmake
+build
+test
+*.o
+compile_commands.json

@@ -1,5 +1,7 @@
 #include <sys/stat.h>
 #include <openssl/sha.h>
+#include <filesystem>
+#include <fstream>
 
 #include "master.h"
 
@@ -37,14 +39,17 @@ void master_sync_seed_handler(
 	    (char *)mmap(nullptr, file_stat.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
 
   std::string sha512 = get_sha512_str(str, file_stat.st_size);
-	munmap(str, file_stat.st_size);
-	close(fd);
 
   if (seed_pool.count(sha512) == 0) {
     seed_pool[sha512] = seed_info;
+    master_save_seed(receive_msg.from, seed_info.seed_file_name, str, file_stat.st_size);
+    munmap(str, file_stat.st_size);
+    close(fd);
   }
   else {
     log_info("seed: %s has existed in global seed pool", seed_info.seed_file_name);
+    munmap(str, file_stat.st_size);
+    close(fd);
     return;
   }
 
@@ -118,4 +123,27 @@ char** gen_slave_argv(int argc, char **argv) {
 }
 
 void master_dir_init() {
+  if (std::filesystem::exists(MASTER_DIR_NAME)) {
+    std::filesystem::remove_all(MASTER_DIR_NAME);
+  }
+  std::filesystem::create_directory(MASTER_DIR_NAME);
+  log_info("master_dir_init success");
+}
+
+void master_save_seed(int from, const char* orig_name, const char* content, const int len) {
+  static int seed_id = 0;
+
+  std::string name(orig_name);
+  int pos = name.find("id:");
+  std::string orig_id = name.substr(pos + 3, 6);
+  std::string prefix{MASTER_DIR_NAME};
+  std::string seed_file_path = prefix + "/seed:" + std::to_string(seed_id) + ",from:" + std::to_string(from) + ",orig_id:" + orig_id;
+
+  std::string file_content(content, len);
+
+  std::ofstream ofs(seed_file_path);
+  ofs << file_content;
+  ofs.close();
+  ++seed_id;
+  log_info("master: save seed %s as %s", orig_name, seed_file_path.c_str());
 }

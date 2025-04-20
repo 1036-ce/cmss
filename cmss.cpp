@@ -142,6 +142,7 @@ int main(int argc, char **argv) {
 		exit(1);
 	}
 
+  master_dir_init();
 	server(slave_cnt, shada, &shm_info);
 	free(slave_argv);
 

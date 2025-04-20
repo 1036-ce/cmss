@@ -40,3 +40,5 @@ char* get_slave_path(int argc, char **argv);
 char** gen_slave_argv(int argc, char **argv);
 
 void master_dir_init();
+
+void master_save_seed(int from, const char* orig_name, const char* content, const int len);

@@ -1127,7 +1127,9 @@ HANDLE_RESPONSES:
   //wait a bit letting the server to complete its remaining task(s)
   memset(session_virgin_bits, 255, MAP_SIZE);
   while(1) {
-    if (has_new_bits(session_virgin_bits) != 2) break;
+    if (has_new_bits(session_virgin_bits) != 2) {
+      break;
+    }
   }
 
   close(sockfd);
@@ -1717,7 +1719,9 @@ EXP_ST void write_bitmap(void) {
   u8* fname;
   s32 fd;
 
-  if (!bitmap_changed) return;
+  if (!bitmap_changed) {
+    return;
+  }
   bitmap_changed = 0;
 
   fname = alloc_printf("%s/fuzz_bitmap", out_dir);
@@ -1797,8 +1801,12 @@ static inline u8 has_new_bits(u8* virgin_map) {
         if ((cur[0] && vir[0] == 0xff) || (cur[1] && vir[1] == 0xff) ||
             (cur[2] && vir[2] == 0xff) || (cur[3] && vir[3] == 0xff) ||
             (cur[4] && vir[4] == 0xff) || (cur[5] && vir[5] == 0xff) ||
-            (cur[6] && vir[6] == 0xff) || (cur[7] && vir[7] == 0xff)) ret = 2;
-        else ret = 1;
+            (cur[6] && vir[6] == 0xff) || (cur[7] && vir[7] == 0xff)) {
+          ret = 2;
+        }
+        else {
+          ret = 1;
+        }
 
 #else
 
@@ -1940,7 +1948,7 @@ static void simplify_trace(u64* mem) {
 
     /* Optimize for sparse bitmaps. */
 
-    if (unlikely(*mem)) {
+    if (unlikely(*mem)) { // *mem != 0
 
       u8* mem8 = (u8*)mem;
 
@@ -1953,7 +1961,9 @@ static void simplify_trace(u64* mem) {
       mem8[6] = simplify_lookup[mem8[6]];
       mem8[7] = simplify_lookup[mem8[7]];
 
-    } else *mem = 0x0101010101010101ULL;
+    } else {
+      *mem = 0x0101010101010101ULL;
+    }
 
     mem++;
 
@@ -2015,11 +2025,13 @@ EXP_ST void init_count_class16(void) {
 
   u32 b1, b2;
 
-  for (b1 = 0; b1 < 256; b1++)
-    for (b2 = 0; b2 < 256; b2++)
+  for (b1 = 0; b1 < 256; b1++) {
+    for (b2 = 0; b2 < 256; b2++) {
       count_class_lookup16[(b1 << 8) + b2] =
         (count_class_lookup8[b1] << 8) |
         count_class_lookup8[b2];
+    }
+  }
 
 }
 
@@ -2133,11 +2145,15 @@ static void update_bitmap_score(struct queue_entry* q) {
 
          /* AFLNet check unique state count first */
 
-         if (q->unique_state_count < top_rated[i]->unique_state_count) continue;
+         if (q->unique_state_count < top_rated[i]->unique_state_count) {
+           continue;
+         }
 
          /* Faster-executing or smaller test cases are favored. */
 
-         if ((q->unique_state_count < top_rated[i]->unique_state_count) && (fav_factor > top_rated[i]->exec_us * top_rated[i]->len)) continue;
+         if ((q->unique_state_count < top_rated[i]->unique_state_count) && (fav_factor > top_rated[i]->exec_us * top_rated[i]->len)) {
+           continue;
+         }
 
          /* Looks like we're going to win. Decrease ref count for the
             previous winner, discard its trace_bits[] if necessary. */
@@ -2234,14 +2250,18 @@ EXP_ST void setup_shm(void) {
 
   u8* shm_str;
 
-  if (!in_bitmap) memset(virgin_bits, 255, MAP_SIZE);
+  if (!in_bitmap) {
+    memset(virgin_bits, 255, MAP_SIZE);
+  }
 
   memset(virgin_tmout, 255, MAP_SIZE);
   memset(virgin_crash, 255, MAP_SIZE);
 
   shm_id = shmget(IPC_PRIVATE, MAP_SIZE, IPC_CREAT | IPC_EXCL | 0600);
 
-  if (shm_id < 0) PFATAL("shmget() failed");
+  if (shm_id < 0) {
+    PFATAL("shmget() failed");
+  }
 
   atexit(remove_shm);
 
@@ -2252,13 +2272,17 @@ EXP_ST void setup_shm(void) {
      fork server commands. This should be replaced with better auto-detection
      later on, perhaps? */
 
-  if (!dumb_mode) setenv(SHM_ENV_VAR, shm_str, 1);
+  if (!dumb_mode) {
+    setenv(SHM_ENV_VAR, shm_str, 1);
+  }
 
   ck_free(shm_str);
 
   trace_bits = shmat(shm_id, NULL, 0);
 
-  if (!trace_bits) PFATAL("shmat() failed");
+  if (!trace_bits) {
+    PFATAL("shmat() failed");
+  }
 
 }
 
@@ -3458,7 +3482,9 @@ static u8 calibrate_case(char** argv, struct queue_entry* q, u8* use_mem,
   if (dumb_mode != 1 && !no_forkserver && !forksrv_pid)
     init_forkserver(argv);
 
-  if (q->exec_cksum) memcpy(first_trace, trace_bits, MAP_SIZE);
+  if (q->exec_cksum) {
+    memcpy(first_trace, trace_bits, MAP_SIZE);
+  }
 
   start_us = get_cur_time_us();
 
@@ -3578,10 +3604,15 @@ static void check_map_coverage(void) {
 
   u32 i;
 
-  if (count_bytes(trace_bits) < 100) return;
+  if (count_bytes(trace_bits) < 100) {
+    return;
+  }
 
-  for (i = (1 << (MAP_SIZE_POW2 - 1)); i < MAP_SIZE; i++)
-    if (trace_bits[i]) return;
+  for (i = (1 << (MAP_SIZE_POW2 - 1)); i < MAP_SIZE; i++) {
+    if (trace_bits[i]) {
+      return;
+    }
+  }
 
   WARNF("Recompile binary with newer version of afl to improve coverage!");
 
@@ -3952,8 +3983,9 @@ static u8* describe_op(u8 hnb) {
 
     sprintf(ret, "src:%06u", current_entry);
 
-    if (splicing_with >= 0)
+    if (splicing_with >= 0) {
       sprintf(ret + strlen(ret), "+%06u", splicing_with);
+    }
 
     sprintf(ret + strlen(ret), ",op:%s", stage_short);
 
@@ -3961,16 +3993,22 @@ static u8* describe_op(u8 hnb) {
 
       sprintf(ret + strlen(ret), ",pos:%u", stage_cur_byte);
 
-      if (stage_val_type != STAGE_VAL_NONE)
+      if (stage_val_type != STAGE_VAL_NONE) {
         sprintf(ret + strlen(ret), ",val:%s%+d",
                 (stage_val_type == STAGE_VAL_BE) ? "be:" : "",
                 stage_cur_val);
+      }
 
-    } else sprintf(ret + strlen(ret), ",rep:%u", stage_cur_val);
+    } 
+    else {
+      sprintf(ret + strlen(ret), ",rep:%u", stage_cur_val);
+    }
 
   }
 
-  if (hnb == 2) strcat(ret, ",+cov");
+  if (hnb == 2) {
+    strcat(ret, ",+cov");
+  }
 
   return ret;
 
@@ -4110,7 +4148,9 @@ static u8 save_if_interesting(char** argv, void* mem, u32 len, u8 fault) {
 
       total_tmouts++;
 
-      if (unique_hangs >= KEEP_UNIQUE_HANG) return keeping;
+      if (unique_hangs >= KEEP_UNIQUE_HANG) {
+        return keeping;
+      }
 
       if (!dumb_mode) {
 
@@ -4120,7 +4160,9 @@ static u8 save_if_interesting(char** argv, void* mem, u32 len, u8 fault) {
         simplify_trace((u32*)trace_bits);
 #endif /* ^WORD_SIZE_64 */
 
-        if (!has_new_bits(virgin_tmout)) return keeping;
+        if (!has_new_bits(virgin_tmout)) {
+          return keeping;
+        }
 
       }
 
@@ -5567,7 +5609,10 @@ EXP_ST u8 common_fuzz_stuff_orig(char** argv, u8* out_buf, u32 len) {
   u8 is_interesting = save_if_interesting(argv, out_buf, len, fault);
   if (is_interesting) {
     seed_info_t seed_info;
-    seed_info_set_file_name(queue_top->fname, strlen(queue_top->fname), &seed_info);
+    u8 *fname_replay = alloc_printf("%s/replayable-queue/%s", out_dir, basename(queue_top->fname));
+    seed_info_set_file_name(fname_replay, strlen(fname_replay), &seed_info);
+    ck_free(fname_replay);
+    /* seed_info_set_file_name(queue_top->fname, strlen(queue_top->fname), &seed_info); */
     slave_send_seed_info(msg_que, sid, &seed_info);
     log_info("slave %d send SYNC_SEED to master, send_file_name: %s", sid, seed_info.seed_file_name);
   }

@@ -66,7 +66,9 @@ void server(int slave_cnt, shared_data_t *shada, shm_info_t *shm_info) {
 	while (true) {
 		if (should_stop) {
 			killpg(0, SIGINT);
-			wait(NULL);
+      for (int i = 0; i < slave_cnt; ++i) {
+        wait(NULL);
+      }
 			shared_data_dtor(slave_cnt, shada);
 			shm_dtor(shm_info);
 			log_info("master: fuzzing done");
@@ -96,20 +98,24 @@ void server(int slave_cnt, shared_data_t *shada, shm_info_t *shm_info) {
 				break;
 			}
 			}
-			/*       printf("master: received msg from slave %d, num : %d\n",
-			 * receive_msg.from, receive_msg.num);
-			 *
-			 *       send_msg.from = -1;
-			 *       send_msg.to = receive_msg.from;
-			 *       send_msg.num = receive_msg.num + 1;
-			 *       send_msg.len = 0;
-			 *       master_send_one(send_msg.to, shada, &send_msg,
-			 * message_real_length(&send_msg)); */
 		} else {
-			// log_trace("master do not receive message form any slave");
 			sleep(1);
 		}
 	}
+}
+
+pid_t exec_fuzzer(char *slave_path, char **slave_argv) {
+  pid_t pid = fork();
+  if (pid == -1) {
+    perror("fork");
+    exit(1);
+  }
+  if (pid == 0) {
+		execv(slave_path, slave_argv);
+		perror("slave");
+		exit(1);
+  }
+  return pid;
 }
 
 int main(int argc, char **argv) {
@@ -117,7 +123,7 @@ int main(int argc, char **argv) {
 	sig_setup();
 	log_init();
 
-	int slave_cnt = 3;
+	int slave_cnt = 5;
 	shm_info_t shm_info;
 	shm_init(CMSS_SHM_NAME, sizeof(shared_data_t), &shm_info);
 	shared_data_t *shada = (shared_data_t *)(shm_info.data);
@@ -125,22 +131,9 @@ int main(int argc, char **argv) {
 	char *slave_path  = get_slave_path(argc, argv);
 	char **slave_argv = gen_slave_argv(argc, argv);
 
-	pid_t pid;
-	for (int i = 0; i < slave_cnt; ++i) {
-		pid = fork();
-		if (pid == 0 || pid == -1) {
-			break;
-		}
-	}
-	if (pid == -1) {
-		perror("fork");
-		exit(1);
-	}
-	if (pid == 0) {
-		execv(slave_path, slave_argv);
-		perror("slave");
-		exit(1);
-	}
+  for (int i = 0; i < slave_cnt; ++i) {
+    exec_fuzzer(slave_path, slave_argv);
+  }
 
   master_dir_init();
 	server(slave_cnt, shada, &shm_info);

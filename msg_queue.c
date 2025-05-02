@@ -32,7 +32,8 @@ bool msg_queue_push_msg(msg_queue_t *msg_que, const char* msg, const int len) {
   sem_wait(&msg_que->mutex);
 
   if (msg_queue_size_impl(msg_que) + len + sizeof(len) > msg_queue_capacity(msg_que)) {
-    fprintf(stderr, "can not push msg");
+    /* fprintf(stderr, "can not push msg"); */
+    log_warn("can not push msg");
     sem_post(&msg_que->mutex);
     return false;
   }

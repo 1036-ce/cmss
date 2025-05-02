@@ -1,4 +1,5 @@
 #include "ring_buffer.h"
+#include "log.h"
 
 
 void ring_buf_push(ring_buffer_t *ring_buf, const char* data, const int len);
@@ -28,7 +29,8 @@ bool ring_buf_push_msg(ring_buffer_t *ring_buf, const char* data, const int len)
 
   if (ring_buf_size_impl(ring_buf) + len + sizeof(len) > ring_buf_capacity(ring_buf)) {
     // fmt::println(stderr, "can not push msg, size is {}, it is too big, current size: {}", len + sizeof(len), ring_buf_size_impl(ring_buf));
-    fprintf(stderr, "can not push msg");
+    /* fprintf(stderr, "can not push msg"); */
+    log_warn("can not push msg");
     sem_post(&ring_buf->mutex);
     return false;
   }

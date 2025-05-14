@@ -14,6 +14,7 @@ aflnet-replay
 aflnet.o
 as
 cmss
+validate_cvgmap
 
 # Binaries produced by "make -C llvm_mode"
 afl-clang-fast
@@ -31,3 +32,4 @@ build
 test
 *.o
 compile_commands.json
+tmp*

@@ -46,10 +46,10 @@ else
 endif
 
 COMM_HDR    = alloc-inl.h config.h debug.h types.h
-CMSS_HDR = args.h cmss_config.h message.h ring_buffer.h shm_info.h cmd.h msg_queue.h shared_data.h log.h seed_info.h
-CMSS_OBJ = args.o message.o ring_buffer.o shm_info.o msg_queue.o shared_data.o log.o seed_info.o
+CMSS_HDR = args.h cmss_config.h message.h ring_buffer.h shm_info.h cmd.h msg_queue.h shared_data.h log.h seed_info.h cvg_map.h
+CMSS_OBJ = args.o message.o ring_buffer.o shm_info.o msg_queue.o shared_data.o log.o seed_info.o cvg_map.o
 
-all: test_x86 $(PROGS) cmss afl-as test_build all_done 
+all: test_x86 $(PROGS) cmss afl-as test_build all_done validate_cvgmap
 
 ifndef AFL_NO_X86
 
@@ -76,6 +76,9 @@ afl-as: afl-as.c afl-as.h $(COMM_HDR) | test_x86
 
 cmss: cmss.cpp ${CMSS_OBJ} master.o ${CMSS_HDR} master.h | test_x86
 	$(CXX) ${CXXFLAGS} $@.cpp ${CMSS_OBJ} master.o -o $@ ${CXXLDFLAGS}
+
+validate_cvgmap: validate_cvgmap.c ${CMSS_OBJ} ${CMSS_HDR} | test_x86
+	${CC} ${CFLAGS} $@.c -o $@ $(LDFLAGS)
 
 # afl-fuzz: afl-fuzz.c $(COMM_HDR) aflnet.o aflnet.h args.o args.h | test_x86
 afl-fuzz: afl-fuzz.c $(COMM_HDR) aflnet.o aflnet.h $(CMSS_OBJ) slave.o $(CMSS_HDR) slave.h | test_x86

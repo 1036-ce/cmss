@@ -69,6 +69,7 @@ void server(int slave_cnt, shared_data_t *shada, shm_info_t *shm_info) {
       for (int i = 0; i < slave_cnt; ++i) {
         wait(NULL);
       }
+      cvg_map_dump(&shada->cvg_map, "cvg_map");
 			shared_data_dtor(slave_cnt, shada);
 			shm_dtor(shm_info);
 			log_info("master: fuzzing done");

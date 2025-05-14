@@ -108,6 +108,8 @@ shared_data_t* shada;
 int sid;
 ring_buffer_t *ring_buf;
 msg_queue_t* msg_que;
+cvg_map_t* cvg_map;
+bool cvg_map_updated = false;
 
 /* Lots of globals, but mostly for the status UI and other things where it
    really makes no sense to haul them around as function parameters. */
@@ -469,8 +471,9 @@ void expand_was_fuzzed_map(u32 new_states, u32 new_qentries) {
   int i, j;
   //Realloc the memory
   was_fuzzed_map = (char **)ck_realloc(was_fuzzed_map, (fuzzed_map_states + new_states) * sizeof(char *));
-  for (i = 0; i < fuzzed_map_states + new_states; i++)
+  for (i = 0; i < fuzzed_map_states + new_states; i++) {
     was_fuzzed_map[i] = (char *)ck_realloc(was_fuzzed_map[i], (fuzzed_map_qentries + new_qentries) * sizeof(char));
+  }
 
   //All new cells are marked as -1 -- meaning UNREACHABLE
   //Keep other cells untouched
@@ -781,7 +784,9 @@ void update_state_aware_variables(struct queue_entry *q, u8 dry_run)
   state_info_t *state;
   unsigned int state_count;
 
-  if (!response_buf_size || !response_bytes) return;
+  if (!response_buf_size || !response_bytes) {
+    return;
+  }
 
   unsigned int *state_sequence = (*extract_response_codes)(response_buf, response_buf_size, &state_count);
 
@@ -872,7 +877,9 @@ void update_state_aware_variables(struct queue_entry *q, u8 dry_run)
           state_ids = (u32 *) ck_realloc(state_ids, (state_ids_count + 1) * sizeof(u32));
           state_ids[state_ids_count++] = curStateID;
 
-          if (curStateID != 0) expand_was_fuzzed_map(1, 0);
+          if (curStateID != 0) {
+            expand_was_fuzzed_map(1, 0);
+          }
         }
 
         //Check if an edge from->to exists
@@ -965,7 +972,9 @@ void update_state_aware_variables(struct queue_entry *q, u8 dry_run)
         state_ids = (u32 *) ck_realloc(state_ids, (state_ids_count + 1) * sizeof(u32));
         state_ids[state_ids_count++] = reachable_state_id;
 
-        if (reachable_state_id != 0) expand_was_fuzzed_map(1, 0);
+        if (reachable_state_id != 0) {
+          expand_was_fuzzed_map(1, 0);
+        }
       }
 
       was_fuzzed_map[get_state_index(reachable_state_id)][q->index] = 0; //Mark it as reachable but not fuzzed
@@ -1134,9 +1143,13 @@ HANDLE_RESPONSES:
 
   close(sockfd);
 
-  if (likely_buggy && false_negative_reduction) return 0;
+  if (likely_buggy && false_negative_reduction) {
+    return 0;
+  }
 
-  if (terminate_child && (child_pid > 0)) kill(child_pid, SIGTERM);
+  if (terminate_child && (child_pid > 0)) {
+    kill(child_pid, SIGTERM);
+  }
 
   //give the server a bit more time to gracefully terminate
   while(1) {
@@ -1573,7 +1586,9 @@ static void mark_as_redundant(struct queue_entry* q, u8 state) {
   u8* fn;
   s32 fd;
 
-  if (state == q->fs_redundant) return;
+  if (state == q->fs_redundant) {
+    return;
+  }
 
   q->fs_redundant = state;
 
@@ -1583,12 +1598,16 @@ static void mark_as_redundant(struct queue_entry* q, u8 state) {
   if (state) {
 
     fd = open(fn, O_WRONLY | O_CREAT | O_EXCL, 0600);
-    if (fd < 0) PFATAL("Unable to create '%s'", fn);
+    if (fd < 0) {
+      PFATAL("Unable to create '%s'", fn);
+    }
     close(fd);
 
   } else {
 
-    if (unlink(fn)) PFATAL("Unable to remove '%s'", fn);
+    if (unlink(fn)) {
+      PFATAL("Unable to remove '%s'", fn);
+    }
 
   }
 
@@ -1699,9 +1718,13 @@ EXP_ST void destroy_queue(void) {
     u32 i;
     //Free AFLNet-specific data structure
     for (i = 0; i < q->region_count; i++) {
-      if (q->regions[i].state_sequence) ck_free(q->regions[i].state_sequence);
+      if (q->regions[i].state_sequence) {
+        ck_free(q->regions[i].state_sequence);
+      }
     }
-    if (q->regions) ck_free(q->regions);
+    if (q->regions) {
+      ck_free(q->regions);
+    }
     ck_free(q);
     q = n;
 
@@ -1829,12 +1852,15 @@ static inline u8 has_new_bits(u8* virgin_map) {
 
   if (ret && virgin_map == virgin_bits) {
     bitmap_changed = 1;
+
+    if (slave_update_cvg_map(cvg_map, trace_bits)) {
+      cvg_map_updated = true;
+    }
   }
 
   return ret;
 
 }
-
 
 /* Count the number of bits set in the provided bitmap. Used for the status
    screen several times every second, does not have to be fast. */
@@ -2110,7 +2136,9 @@ static void minimize_bits(u8* dst, u8* src) {
 
   while (i < MAP_SIZE) {
 
-    if (*(src++)) dst[i >> 3] |= 1 << (i & 7);
+    if (*(src++)) {
+      dst[i >> 3] |= 1 << (i & 7);
+    }
     i++;
 
   }
@@ -2194,7 +2222,9 @@ static void cull_queue(void) {
   static u8 temp_v[MAP_SIZE >> 3];
   u32 i;
 
-  if (dumb_mode || !score_changed) return;
+  if (dumb_mode || !score_changed) {
+    return;
+  }
 
   score_changed = 0;
 
@@ -2206,33 +2236,39 @@ static void cull_queue(void) {
   q = queue;
 
   while (q) {
-    if (!q->is_initial_seed)
+    if (!q->is_initial_seed) {
       q->favored = 0;
+    }
     q = q->next;
   }
 
   /* Let's see if anything in the bitmap isn't captured in temp_v.
      If yes, and if it has a top_rated[] contender, let's use it. */
 
-  for (i = 0; i < MAP_SIZE; i++)
+  for (i = 0; i < MAP_SIZE; i++) {
     if (top_rated[i] && (temp_v[i >> 3] & (1 << (i & 7)))) {
 
       u32 j = MAP_SIZE >> 3;
 
       /* Remove all bits belonging to the current entry from temp_v. */
 
-      while (j--)
-        if (top_rated[i]->trace_mini[j])
+      while (j--) {
+        if (top_rated[i]->trace_mini[j]) {
           temp_v[j] &= ~top_rated[i]->trace_mini[j];
+        }
+      }
 
       top_rated[i]->favored = 1;
       queued_favored++;
 
       //if (!top_rated[i]->was_fuzzed) pending_favored++;
       /* AFLNet takes into account more information to make this decision */
-      if ((top_rated[i]->generating_state_id == target_state_id || top_rated[i]->is_initial_seed) && (was_fuzzed_map[get_state_index(target_state_id)][top_rated[i]->index] == 0)) pending_favored++;
+      if ((top_rated[i]->generating_state_id == target_state_id || top_rated[i]->is_initial_seed) && (was_fuzzed_map[get_state_index(target_state_id)][top_rated[i]->index] == 0)) {
+        pending_favored++;
+      }
 
     }
+  }
 
   q = queue;
 
@@ -3403,9 +3439,13 @@ static u8 run_target(char** argv, u32 timeout) {
 
     kill_signal = WTERMSIG(status);
 
-    if (child_timed_out && kill_signal == SIGKILL) return FAULT_TMOUT;
+    if (child_timed_out && kill_signal == SIGKILL) {
+      return FAULT_TMOUT;
+    }
 
-    if (kill_signal == SIGTERM) return FAULT_NONE;
+    if (kill_signal == SIGTERM) {
+      return FAULT_NONE;
+    }
 
     return FAULT_CRASH;
 
@@ -3419,8 +3459,9 @@ static u8 run_target(char** argv, u32 timeout) {
     return FAULT_CRASH;
   }
 
-  if ((dumb_mode == 1 || no_forkserver) && tb4 == EXEC_FAIL_SIG)
+  if ((dumb_mode == 1 || no_forkserver) && tb4 == EXEC_FAIL_SIG) {
     return FAULT_ERROR;
+  }
 
   /* It makes sense to account for the slowest units only if the testcase was run
   under the user defined timeout. */
@@ -3467,9 +3508,10 @@ static u8 calibrate_case(char** argv, struct queue_entry* q, u8* use_mem,
      trying to calibrate already-added finds. This helps avoid trouble due
      to intermittent latency. */
 
-  if (!from_queue || resuming_fuzz)
+  if (!from_queue || resuming_fuzz) {
     use_tmout = MAX(exec_tmout + CAL_TMOUT_ADD,
                     exec_tmout * CAL_TMOUT_PERC / 100);
+  }
 
   q->cal_failed++;
 
@@ -3479,8 +3521,9 @@ static u8 calibrate_case(char** argv, struct queue_entry* q, u8* use_mem,
   /* Make sure the forkserver is up before we do anything, and let's not
      count its spin-up time toward binary calibration. */
 
-  if (dumb_mode != 1 && !no_forkserver && !forksrv_pid)
+  if (dumb_mode != 1 && !no_forkserver && !forksrv_pid) {
     init_forkserver(argv);
+  }
 
   if (q->exec_cksum) {
     memcpy(first_trace, trace_bits, MAP_SIZE);
@@ -3492,7 +3535,9 @@ static u8 calibrate_case(char** argv, struct queue_entry* q, u8* use_mem,
 
     u32 cksum;
 
-    if (!first_run && !(stage_cur % stats_update_freq)) show_stats();
+    if (!first_run && !(stage_cur % stats_update_freq)) {
+      show_stats();
+    }
 
     write_to_testcase(use_mem, q->len);
 
@@ -3501,7 +3546,9 @@ static u8 calibrate_case(char** argv, struct queue_entry* q, u8* use_mem,
     /* stop_soon is set by the handler for Ctrl+C. When it's pressed,
        we want to bail out quickly. */
 
-    if (stop_soon || fault != crash_mode) goto abort_calibration;
+    if (stop_soon || fault != crash_mode) {
+      goto abort_calibration;
+    }
 
     if (!dumb_mode && !stage_cur && !count_bytes(trace_bits)) {
       fault = FAULT_NOINST;
@@ -3513,7 +3560,9 @@ static u8 calibrate_case(char** argv, struct queue_entry* q, u8* use_mem,
     if (q->exec_cksum != cksum) {
 
       u8 hnb = has_new_bits(virgin_bits);
-      if (hnb > new_bits) new_bits = hnb;
+      if (hnb > new_bits) {
+        new_bits = hnb;
+      }
 
       if (q->exec_cksum) {
 
@@ -3565,7 +3614,9 @@ static u8 calibrate_case(char** argv, struct queue_entry* q, u8* use_mem,
      parent. This is a non-critical problem, but something to warn the user
      about. */
 
-  if (!dumb_mode && first_run && !fault && !new_bits) fault = FAULT_NOBITS;
+  if (!dumb_mode && first_run && !fault && !new_bits) {
+    fault = FAULT_NOBITS;
+  }
 
 abort_calibration:
 
@@ -3591,7 +3642,9 @@ abort_calibration:
   stage_cur  = old_sc;
   stage_max  = old_sm;
 
-  if (!first_run) show_stats();
+  if (!first_run) {
+    show_stats();
+  }
 
   return fault;
 
@@ -3660,7 +3713,9 @@ static void perform_dry_run(char** argv) {
     ck_free(use_mem);
 
     /* Update state-aware variables (e.g., state machine, regions and their annotations */
-    if (state_aware_mode) update_state_aware_variables(q, 1);
+    if (state_aware_mode) {
+      update_state_aware_variables(q, 1);
+    }
 
     /* save the seed to file for replaying */
     u8 *fn_replay = alloc_printf("%s/replayable-queue/%s", out_dir, basename(q->fname));
@@ -3817,7 +3872,9 @@ static void perform_dry_run(char** argv) {
 
     }
 
-    if (q->var_behavior) WARNF("Instrumentation output varies across runs.");
+    if (q->var_behavior) {
+      WARNF("Instrumentation output varies across runs.");
+    }
 
     q = q->next;
 
@@ -4067,8 +4124,8 @@ static void write_crash_readme(void) {
 /* Check if the result of an execve() during routine fuzzing is interesting,
    save or queue the input test case for further analysis if so. Returns 1 if
    entry is saved, 0 otherwise. */
-// if seed is interesting ,insert it to the top of queue, and variable queue_top 
-// reference this seed
+// if seed is interesting ,insert it to the top of queue, 
+// and variable queue_top reference this seed
 static u8 save_if_interesting(char** argv, void* mem, u32 len, u8 fault) {
 
   u8  *fn = "";
@@ -4125,8 +4182,9 @@ static u8 save_if_interesting(char** argv, void* mem, u32 len, u8 fault) {
 
     res = calibrate_case(argv, queue_top, mem, queue_cycle - 1, 0);
 
-    if (res == FAULT_ERROR)
+    if (res == FAULT_ERROR) {
       FATAL("Unable to execute target application");
+    }
 
     /*fd = open(fn, O_WRONLY | O_CREAT | O_EXCL, 0600);
     if (fd < 0) PFATAL("Unable to create '%s'", fn);
@@ -4182,9 +4240,13 @@ static u8 save_if_interesting(char** argv, void* mem, u32 len, u8 fault) {
            timeout actually uncovers a crash. Make sure we don't discard it if
            so. */
 
-        if (!stop_soon && new_fault == FAULT_CRASH) goto keep_as_crash;
+        if (!stop_soon && new_fault == FAULT_CRASH) {
+          goto keep_as_crash;
+        }
 
-        if (stop_soon || new_fault != FAULT_TMOUT) return keeping;
+        if (stop_soon || new_fault != FAULT_TMOUT) {
+          return keeping;
+        }
 
       }
 
@@ -4226,11 +4288,15 @@ keep_as_crash:
         simplify_trace((u32*)trace_bits);
 #endif /* ^WORD_SIZE_64 */
 
-        if (!has_new_bits(virgin_crash)) return keeping;
+        if (!has_new_bits(virgin_crash)) {
+          return keeping;
+        }
 
       }
 
-      if (!unique_crashes) write_crash_readme();
+      if (!unique_crashes) {
+        write_crash_readme();
+      }
 
 #ifndef SIMPLE_FILES
 
@@ -5607,19 +5673,23 @@ EXP_ST u8 common_fuzz_stuff_orig(char** argv, u8* out_buf, u32 len) {
 
   /* queued_discovered += save_if_interesting(argv, out_buf, len, fault); */
   u8 is_interesting = save_if_interesting(argv, out_buf, len, fault);
-  if (is_interesting) {
+
+  // if update global coverage map success, then sync this seed
+  if (is_interesting && cvg_map_updated) {
+    cvg_map_updated = false;
     seed_info_t seed_info;
     u8 *fname_replay = alloc_printf("%s/replayable-queue/%s", out_dir, basename(queue_top->fname));
     seed_info_set_file_name(fname_replay, strlen(fname_replay), &seed_info);
     ck_free(fname_replay);
     /* seed_info_set_file_name(queue_top->fname, strlen(queue_top->fname), &seed_info); */
     slave_send_seed_info(msg_que, sid, &seed_info);
-    log_info("slave %d send SYNC_SEED to master, send_file_name: %s", sid, seed_info.seed_file_name);
+    log_info("slave %d: send SYNC_SEED to master, send_file_name: %s", sid, seed_info.seed_file_name);
   }
   queued_discovered += is_interesting;
 
-  if (!(stage_cur % stats_update_freq) || stage_cur + 1 == stage_max)
+  if (!(stage_cur % stats_update_freq) || stage_cur + 1 == stage_max) {
     show_stats();
+  }
 
   return 0;
 
@@ -5668,10 +5738,10 @@ void slave_sync_seed_handler(const mss_message_t* receive_msg, char **argv) {
     corpus_read_or_sync = 2;
     u8 is_interesting = save_if_interesting(argv, mem, file_stat.st_size, fault);
     if (is_interesting) {
-      log_info("slave %d: have save %s to local seed pool", sid, seed_path);
+      log_info("slave %d: save %s to local seed pool", sid, seed_path);
     }
     else {
-      log_info("slave %d: don't have save %s to local seed pool", sid, seed_path);
+      log_info("slave %d: don't save %s to local seed pool", sid, seed_path);
     }
     queued_imported += is_interesting;
 
@@ -9061,6 +9131,7 @@ void slave_init() {
   log_init(sid);
   ring_buf = get_local_ring_buf(sid, shada);
   msg_que = &(shada->msg_que);
+  cvg_map = &(shada->cvg_map);
 
   mss_message_t receive_msg;
   slave_fetch(ring_buf, &receive_msg);
@@ -9071,7 +9142,7 @@ void slave_init() {
   memcpy(&args, receive_msg.data, receive_msg.len);
   slave_send_args_ensure(msg_que, sid);
   log_info("slave %d send ARGS_ENSURE to master", sid);
-  msg_queue_dump(msg_que);
+  // msg_queue_dump(msg_que); 
 }
 
 /* Main entry point */

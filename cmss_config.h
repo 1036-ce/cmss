@@ -10,5 +10,8 @@
 #define ARGS_BUF_SIZE  64
 #define FILE_NAME_SIZE 128
 
+// CVG_MAP_SIZE = MAP_SIZE(config.h)
+#define CVG_MAP_SIZE 65536
+
 static const char *CMSS_SHM_NAME = "mss_shm";
 static const char *MASTER_DIR_NAME = "master";

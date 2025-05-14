@@ -2392,7 +2392,9 @@ u32 save_kl_messages_to_file(klist_t(lms) *kl_messages, u8 *fname, u8 replay_ena
   kliter_t(lms) *it;
 
   s32 fd = open(fname, O_WRONLY | O_CREAT, 0600);
-  if (fd < 0) PFATAL("Unable to create file '%s'", fname);
+  if (fd < 0) {
+    PFATAL("Unable to create file '%s'", fname);
+  }
 
   u32 message_count = 0;
   //Iterate through all messages in the linked list

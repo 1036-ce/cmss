@@ -7,6 +7,7 @@ void shared_data_init(const int slave_cnt, shared_data_t* shada) {
     ring_buf_init(&shada->ring_bufs[i]);
   }
   msg_queue_init(&shada->msg_que);
+  cvg_map_init(&shada->cvg_map);
 }
 
 void shared_data_dtor(const int slave_cnt, shared_data_t* shada) {
@@ -15,4 +16,5 @@ void shared_data_dtor(const int slave_cnt, shared_data_t* shada) {
     ring_buf_dtor(&shada->ring_bufs[i]);
   }
   msg_queue_dtor(&shada->msg_que);
+  cvg_map_dtor(&shada->cvg_map);
 }

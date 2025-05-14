@@ -9,12 +9,14 @@
 
 #include "ring_buffer.h"
 #include "msg_queue.h"
+#include "cvg_map.h"
 
 typedef struct shared_data_t {
   int sid;
   sem_t sid_mtx;
   ring_buffer_t ring_bufs[MAX_PROCESS_CNT];
   msg_queue_t msg_que;
+  cvg_map_t cvg_map;
 } shared_data_t;
 
 void shared_data_init(const int slave_cnt, shared_data_t* shada);

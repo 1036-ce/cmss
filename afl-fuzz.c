@@ -109,7 +109,6 @@ int sid;
 ring_buffer_t *ring_buf;
 msg_queue_t* msg_que;
 cvg_map_t* cvg_map;
-bool cvg_map_updated = false;
 
 /* Lots of globals, but mostly for the status UI and other things where it
    really makes no sense to haul them around as function parameters. */
@@ -1852,10 +1851,6 @@ static inline u8 has_new_bits(u8* virgin_map) {
 
   if (ret && virgin_map == virgin_bits) {
     bitmap_changed = 1;
-
-    if (slave_update_cvg_map(cvg_map, trace_bits)) {
-      cvg_map_updated = true;
-    }
   }
 
   return ret;
@@ -5675,15 +5670,19 @@ EXP_ST u8 common_fuzz_stuff_orig(char** argv, u8* out_buf, u32 len) {
   u8 is_interesting = save_if_interesting(argv, out_buf, len, fault);
 
   // if update global coverage map success, then sync this seed
-  if (is_interesting && cvg_map_updated) {
-    cvg_map_updated = false;
-    seed_info_t seed_info;
-    u8 *fname_replay = alloc_printf("%s/replayable-queue/%s", out_dir, basename(queue_top->fname));
-    seed_info_set_file_name(fname_replay, strlen(fname_replay), &seed_info);
-    ck_free(fname_replay);
-    /* seed_info_set_file_name(queue_top->fname, strlen(queue_top->fname), &seed_info); */
-    slave_send_seed_info(msg_que, sid, &seed_info);
-    log_info("slave %d: send SYNC_SEED to master, send_file_name: %s", sid, seed_info.seed_file_name);
+  if (is_interesting) {
+    if (slave_update_cvg_map(cvg_map, virgin_bits)) {
+      seed_info_t seed_info;
+      u8 *fname_replay = alloc_printf("%s/replayable-queue/%s", out_dir, basename(queue_top->fname));
+      seed_info_set_file_name(fname_replay, strlen(fname_replay), &seed_info);
+      ck_free(fname_replay);
+      /* seed_info_set_file_name(queue_top->fname, strlen(queue_top->fname), &seed_info); */
+      slave_send_seed_info(msg_que, sid, &seed_info);
+      log_info("slave %d: send SYNC_SEED to master, send_file_name: %s", sid, seed_info.seed_file_name);
+    }
+    else {
+      log_info("slave %d: current virgin_bits can not update global coverage map", sid);
+    }
   }
   queued_discovered += is_interesting;
 

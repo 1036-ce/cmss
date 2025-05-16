@@ -36,26 +36,23 @@ void slave_send_seed_info(msg_queue_t *msg_que, int sid,
 	slave_send(msg_que, &msg, message_real_length(&msg));
 }
 
-bool slave_update_cvg_map(cvg_map_t *cvg_map, const uint8_t *trace_bits) {
-	// sem_wait(&cvg_map->mutex);
-
-	const uint64_t *current = (const uint64_t *)trace_bits;
+bool slave_update_cvg_map(cvg_map_t *cvg_map, const uint8_t *virgin_map) {
+  // sem_wait(&cvg_map->mutex);
+	const uint64_t *virgin = (const uint64_t *)virgin_map;
 
 	bool ret = false;
 	for (int i = 0; i < (CVG_MAP_SIZE >> 3); ++i) {
-    if (unlikely(*current)) {
-			uint64_t virgin = cvg_map_get64(cvg_map, i);
-      if (unlikely(virgin & *current)) {
-				cvg_map_and_at64(cvg_map, i, ~*current);
-        // uint64_t tmp = cvg_map_get64(cvg_map, i);
-        // log_debug("%d: 0x%lX to 0x%lX, trace_bits at %d: 0x%lX", i, virgin, tmp, i, *current);
-				ret = true;
-			}
+		if (unlikely(~*virgin)) {
+			uint64_t current = cvg_map_get64(cvg_map, i);
+      uint64_t val = current & *virgin;
+      if (unlikely(val < current)) {
+        cvg_map_set64(cvg_map, i, val);
+        ret = true;
+      }
 		}
-		++current;
+		++virgin;
 	}
-
-	// sem_post(&cvg_map->mutex);
+  // sem_post(&cvg_map->mutex);
 	return ret;
 }
 

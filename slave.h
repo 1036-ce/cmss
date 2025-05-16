@@ -17,7 +17,8 @@ void slave_send_args_ensure(msg_queue_t* msg_que, int sid);
 
 void slave_send_seed_info(msg_queue_t* msg_que, int sid, const seed_info_t* seed_info);
 
-bool slave_update_cvg_map(cvg_map_t* cvg_map, const uint8_t* trace_bits);
+// bool slave_update_cvg_map(cvg_map_t* cvg_map, const uint8_t* trace_bits);
+bool slave_update_cvg_map(cvg_map_t* cvg_map, const uint8_t* virgin_map);
 
 int get_sid(shared_data_t* shada);
 
